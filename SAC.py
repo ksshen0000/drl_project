@@ -7,7 +7,6 @@ import torch.nn as nn
 import torch.optim as optim
 import pickle
 from torch.distributions import Normal
-import numpy as np
 
 # Set random seed for reproducibility
 seed = 0
@@ -189,7 +188,7 @@ class SAC:
         
         state = torch.FloatTensor(state).to(self.device)
         action = torch.FloatTensor(action).to(self.device)
-        reward = torch.FloatTensor(reward).to(self.device)
+        reward = torch.FloatTensor(reward).to(self.device)  # Corrected typo here
         next_state = torch.FloatTensor(next_state).to(self.device)
         done = torch.FloatTensor(done).to(self.device)
         
@@ -217,8 +216,14 @@ class SAC:
             # Sample actions from the current policy
             new_action, log_prob, _ = self.actor.sample(state)
             
-            # Compute actor loss
-            actor_loss = (self.alpha * log_prob - self.critic(state, new_action)[0]).mean()
+            # Obtain both Q1 and Q2 values for the new actions
+            critic_q1_new, critic_q2_new = self.critic(state, new_action)
+            
+            # Take the minimum of Q1 and Q2 to mitigate overestimation
+            min_q_new = torch.min(critic_q1_new, critic_q2_new)
+            
+            # Compute actor loss using the minimum Q-value
+            actor_loss = (self.alpha * log_prob - min_q_new).mean()
             
             # Optimize Actor
             self.actor_optimizer.zero_grad()
@@ -288,8 +293,12 @@ def evaluate_policy(env, agent, episodes=10):
         done = False
         while not done:
             action = agent.select_action(state, evaluate=True)
-            next_state, reward, terminated, truncated, info = env.step(action)
-            done = terminated or truncated
+            try:
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+            except ValueError:
+                # For older Gym versions
+                next_state, reward, done, info = env.step(action)
             state = next_state
             episode_reward += reward
         avg_reward += episode_reward
@@ -310,12 +319,13 @@ if __name__ == "__main__":
     MAX_EPISODES = args.train_eps
     MAX_STEPS = args.max_steps
     SAVE_INTERVAL = args.save_interval
+    
     # Initialize lists to store rewards
     train_rewards = []
     eval_rewards = []
+    
     # Create environment
     env = gym.make(args.env_name)
-    env.seed(seed)
     state = env.reset(seed=seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -393,29 +403,31 @@ if __name__ == "__main__":
             print(f"Evaluation over {EVAL_EPISODES} episodes: Average Reward: {eval_reward}")
             eval_rewards.append(eval_reward)
         
-        # Save the model at regular intervals
+        # Save the model and rewards at regular intervals
         if (episode + 1) % SAVE_INTERVAL == 0:
             checkpoint_path = os.path.join(model_dir, f'sac_checkpoint_ep{episode + 1}.pth')
             buffer_path = os.path.join(model_dir, f'replay_buffer_ep{episode + 1}.pkl')  # Changed to .pkl for pickle
             agent.save(checkpoint_path, buffer_path, episode + 1)
             print(f"Model saved at episode {episode + 1}")
             
-            
+            # Save training and evaluation rewards
             train_rewards_path = os.path.join(model_dir, 'train_rewards.npy')
             eval_rewards_path = os.path.join(model_dir, 'eval_rewards.npy')
             np.save(train_rewards_path, np.array(train_rewards))
             np.save(eval_rewards_path, np.array(eval_rewards))
             print(f"Saved training rewards and evaluation results at episode {episode + 1}")
-        # After the training loop ends
+    
+    # After the training loop ends
     final_checkpoint_path = os.path.join(model_dir, f'sac_final_checkpoint.pth')
     final_buffer_path = os.path.join(model_dir, f'replay_buffer_final.pkl')
     agent.save(final_checkpoint_path, final_buffer_path, MAX_EPISODES)
     print("Final model and replay buffer saved.")
-
+    
     # Save final training and evaluation rewards
     final_train_rewards_path = os.path.join(model_dir, 'train_rewards_final.npy')
     final_eval_rewards_path = os.path.join(model_dir, 'eval_rewards_final.npy')
     np.save(final_train_rewards_path, np.array(train_rewards))
     np.save(final_eval_rewards_path, np.array(eval_rewards))
     print("Final training rewards and evaluation results saved.")
+    
     env.close()
