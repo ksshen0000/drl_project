@@ -412,7 +412,7 @@ def main():
     action_bound = float(env.action_space.high[0])
     
     # Create models directory based on environment name
-    model_dir = os.path.join('models', args.env_name)
+    model_dir = os.path.join('models', args.env_name+"_SAC_MC")
     os.makedirs(model_dir, exist_ok=True)
     
     # Initialize SAC Agent with hyperparameters
