@@ -345,7 +345,12 @@ def evaluate_policy(env, agent, episodes=10):
         done = False
         while not done:
             action = agent.select_action(state, evaluate=True)
-            next_state, reward, done, info = env.step(action)
+            try:
+                next_state, reward, terminated, truncated, info = env.step(action)
+                done = terminated or truncated
+            except ValueError:
+                # For older Gym versions
+                next_state, reward, done, info = env.step(action) 
             state = next_state
             episode_reward += reward
         avg_reward += episode_reward
@@ -359,9 +364,9 @@ def evaluate_policy(env, agent, episodes=10):
 def main():
     parser = argparse.ArgumentParser(description='Soft Actor-Critic (SAC) for OpenAI Gym Environments')
     # Environment and training parameters
-    parser.add_argument('--env_name', type=str, default='Pendulum-v1', help='Gym environment name')
+    parser.add_argument('--env_name', type=str, default='HumanoidStandup-v2', help='Gym environment name')
     parser.add_argument('--train_eps', type=int, default=1000, help='Number of training episodes')
-    parser.add_argument('--max_steps', type=int, default=200, help='Max steps per episode')
+    parser.add_argument('--max_steps', type=int, default=1000, help='Max steps per episode')
     parser.add_argument('--load', action='store_true', help='Load trained model')
     parser.add_argument('--save_interval', type=int, default=50, help='Model saving interval (in episodes)')
     parser.add_argument('--eval_interval', type=int, default=50, help='Evaluation interval (in episodes)')
@@ -396,7 +401,7 @@ def main():
     
     # Create environment
     env = gym.make(args.env_name)
-    env.seed(args.seed)
+    # env.seed(args.seed)
     state = env.reset(seed=args.seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -439,7 +444,8 @@ def main():
 
         for step in range(args.max_steps):
             if args.render:
-                env.render()
+                # env.render()
+                pass
             
             # Select action without exploration noise (deterministic for training)
             action = agent.select_action(state, evaluate=False)
