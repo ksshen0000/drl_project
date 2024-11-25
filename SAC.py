@@ -310,7 +310,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Soft Actor-Critic (SAC) for OpenAI Gym Environments')
     parser.add_argument('--env_name', type=str, default='HumanoidStandup-v2', help='Gym environment name')
     parser.add_argument('--train_eps', type=int, default=1000, help='Number of training episodes')
-    parser.add_argument('--max_steps', type=int, default=1000, help='Max steps per episode')
+    parser.add_argument('--max_steps', type=int, default=500, help='Max steps per episode')
     parser.add_argument('--load', action='store_true', help='Load trained model')
     parser.add_argument('--save_interval', type=int, default=50, help='Model saving interval')
     parser.add_argument('--render', action='store_true', help='Render the environment')
