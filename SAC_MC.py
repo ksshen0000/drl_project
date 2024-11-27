@@ -411,7 +411,7 @@ def main():
     action_bound = float(env.action_space.high[0])
     
     # Create models directory based on environment name
-    model_dir = os.path.join('models', args.env_name+"_SAC_MC")
+    model_dir = os.path.join('models', args.env_name+"_sac_mc")
     os.makedirs(model_dir, exist_ok=True)
     
     # Initialize SAC Agent with hyperparameters
@@ -443,8 +443,7 @@ def main():
 
         for step in range(args.max_steps):
             if args.render:
-                # env.render()
-                pass
+                env.render()
             
             # Select action without exploration noise (deterministic for training)
             action = agent.select_action(state, evaluate=False)
