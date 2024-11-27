@@ -399,7 +399,7 @@ def main():
     eval_rewards = []
     
     # Create environment
-    env = gym.make(args.env_name)
+    env = gym.make(args.env_name,render_mode='human')
     # env.seed(args.seed)
     state = env.reset(seed=args.seed)
     if isinstance(state, tuple):
@@ -420,7 +420,7 @@ def main():
     # Optionally load a pre-trained model
     start_episode = 0
     if args.load:
-        checkpoint_path = os.path.join(model_dir, 'sac_checkpoint.pkl')
+        checkpoint_path = os.path.join(model_dir, 'sac_final_checkpoint.pkl')
         if os.path.exists(checkpoint_path):
             agent = SAC.load(checkpoint_path)
             print(f"Loaded model from {checkpoint_path}")
@@ -432,7 +432,7 @@ def main():
             print("Checkpoint not found. Starting from scratch.")
     
     # Training Loop
-    for episode in range(start_episode, args.train_eps):
+    for episode in range(start_episode, start_episode+args.train_eps):
         # Reset the environment for each episode
         state = env.reset(seed=args.seed + episode)
         if isinstance(state, tuple):
@@ -444,6 +444,7 @@ def main():
         for step in range(args.max_steps):
             if args.render:
                 env.render()
+                # pass
             
             # Select action without exploration noise (deterministic for training)
             action = agent.select_action(state, evaluate=False)

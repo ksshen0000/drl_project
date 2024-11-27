@@ -298,7 +298,7 @@ if __name__ == "__main__":
     EVAL_EPISODES = args.eval_episodes
 
     # Create environment
-    env = gym.make(args.env_name)
+    env = gym.make(args.env_name,render_mode='human')
     try:
         state, info = env.reset(seed=seed)
         state = state if isinstance(state, np.ndarray) else np.array(state)

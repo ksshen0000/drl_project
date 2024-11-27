@@ -325,7 +325,7 @@ if __name__ == "__main__":
     eval_rewards = []
     
     # Create environment
-    env = gym.make(args.env_name)
+    env = gym.make(args.env_name, render_mode='human')
     state = env.reset(seed=seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -346,8 +346,8 @@ if __name__ == "__main__":
     # Optionally load a pre-trained model
     start_episode = 0
     if args.load:
-        checkpoint_path = os.path.join(model_dir, 'sac_checkpoint.pth')
-        buffer_path = os.path.join(model_dir, 'replay_buffer.pkl')  # Changed to .pkl for pickle
+        checkpoint_path = os.path.join(model_dir, 'sac_final_checkpoint.pth')
+        buffer_path = os.path.join(model_dir, 'replay_buffer_final.pkl')  # Changed to .pkl for pickle
         if os.path.exists(checkpoint_path) and os.path.exists(buffer_path):
             start_episode = agent.load(checkpoint_path, buffer_path)
             print(f"Loaded model from episode {start_episode}")
@@ -355,7 +355,7 @@ if __name__ == "__main__":
             print("Checkpoint or replay buffer not found. Starting from scratch.")
     
     # Training Loop
-    for episode in range(start_episode, MAX_EPISODES):
+    for episode in range(start_episode, start_episode+MAX_EPISODES):
         # Reset the environment for each episode
         state = env.reset(seed=seed)
         if isinstance(state, tuple):
@@ -365,7 +365,8 @@ if __name__ == "__main__":
         
         for step in range(MAX_STEPS):
             if args.render:
-                env.render()
+                # env.render()
+                pass
             
             # Select action with exploration noise
             action = agent.select_action(state, evaluate=False)
