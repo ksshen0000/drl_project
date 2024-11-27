@@ -25,7 +25,6 @@ DEFAULT_MEMORY_CAPACITY = 1000000
 DEFAULT_BATCH_SIZE = 256
 DEFAULT_POLICY_FREQ = 2
 DEFAULT_NUM_EPISODES = 1000
-DEFAULT_MAX_STEPS = 200
 DEFAULT_EVAL_INTERVAL = 50
 DEFAULT_EVAL_EPISODES = 10
 DEFAULT_SEED = 42
@@ -366,7 +365,7 @@ def main():
     # Environment and training parameters
     parser.add_argument('--env_name', type=str, default='HumanoidStandup-v2', help='Gym environment name')
     parser.add_argument('--train_eps', type=int, default=1000, help='Number of training episodes')
-    parser.add_argument('--max_steps', type=int, default=500, help='Max steps per episode')
+    parser.add_argument('--max_steps', type=int, default=1000, help='Max steps per episode')
     parser.add_argument('--load', action='store_true', help='Load trained model')
     parser.add_argument('--save_interval', type=int, default=50, help='Model saving interval (in episodes)')
     parser.add_argument('--eval_interval', type=int, default=50, help='Evaluation interval (in episodes)')
