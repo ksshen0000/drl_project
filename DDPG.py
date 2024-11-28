@@ -178,13 +178,15 @@ class DDPG:
         self.actor_optimizer.step()
 
         # Soft update of target networks
-        self.soft_update(self.actor, self.actor_target)
-        self.soft_update(self.critic, self.critic_target)
+        self.soft_update(self.actor_target, self.actor)
+        self.soft_update(self.critic_target, self.critic)
 
-    def soft_update(self, source, target):
+
+    def soft_update(self, target, source):
         """Soft update model parameters"""
         for target_param, source_param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(TAU * source_param.data + (1.0 - TAU) * target_param.data)
+
 
     def save(self, checkpoint_path, buffer_path, episode):
         """Save model parameters and replay buffer"""
@@ -252,7 +254,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='DDPG for OpenAI Gym Environments')
     parser.add_argument('--env_name', type=str, default='HumanoidStandup-v2', help='Gym environment name')
     parser.add_argument('--train_eps', type=int, default=1000, help='Number of training episodes')
-    parser.add_argument('--max_steps', type=int, default=500, help='Max steps per episode')
+    parser.add_argument('--max_steps', type=int, default=1000, help='Max steps per episode')
     parser.add_argument('--load', action='store_true', help='Load trained model')
     parser.add_argument('--save_interval', type=int, default=50, help='Model saving interval')
     parser.add_argument('--render', action='store_true', help='Render the environment')

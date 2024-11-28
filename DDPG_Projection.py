@@ -3,7 +3,7 @@
 """
 Created on [Current Date]
 
-This code implements a constrained policy optimization algorithm using the Frank-Wolfe algorithm with PyTorch,
+This code implements a constrained DDPG algorithm using projection with PyTorch,
 suitable for environments with constraints like HumanoidStandup-v2.
 """
 
@@ -49,18 +49,21 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, state_dim, action_dim):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(state_dim + action_dim, 400)
+        self.fc1_s = nn.Linear(state_dim, 400)
+        self.fc1_a = nn.Linear(action_dim, 400)
         self.fc2 = nn.Linear(400, 300)
         self.fc3 = nn.Linear(300, 1)
 
         # Weight initialization
-        nn.init.uniform_(self.fc1.weight, -1/np.sqrt(state_dim + action_dim), 1/np.sqrt(state_dim + action_dim))
+        nn.init.uniform_(self.fc1_s.weight, -1/np.sqrt(state_dim), 1/np.sqrt(state_dim))
+        nn.init.uniform_(self.fc1_a.weight, -1/np.sqrt(action_dim), 1/np.sqrt(action_dim))
         nn.init.uniform_(self.fc2.weight, -1/np.sqrt(400), 1/np.sqrt(400))
         nn.init.uniform_(self.fc3.weight, -3e-3, 3e-3)
 
     def forward(self, state, action):
-        x = torch.cat([state, action], dim=1)
-        x = torch.relu(self.fc1(x))
+        x_s = torch.relu(self.fc1_s(state))
+        x_a = torch.relu(self.fc1_a(action))
+        x = x_s + x_a
         x = torch.relu(self.fc2(x))
         q_value = self.fc3(x)
         return q_value
@@ -78,21 +81,31 @@ class ReplayBuffer:
     def push(self, state, action, reward, next_state, done):
         if len(self.buffer) < self.capacity:
             self.buffer.append(None)
+        state = np.array(state)
+        action = np.array(action)
+        next_state = np.array(next_state)
         self.buffer[self.position] = (state, action, reward, next_state, done)
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
         batch = random.sample(self.buffer, batch_size)
-        return map(np.stack, zip(*batch))
+        state_batch, action_batch, reward_batch, next_state_batch, done_batch = zip(*batch)
+        return (
+            np.array(state_batch),
+            np.array(action_batch),
+            np.array(reward_batch, dtype=np.float32),
+            np.array(next_state_batch),
+            np.array(done_batch, dtype=np.float32)
+        )
 
     def __len__(self):
         return len(self.buffer)
 
 # ============================
-# Constrained Policy Optimization Agent with Frank-Wolfe Algorithm
+# Constrained DDPG Agent with Projection
 # ============================
 
-class FrankWolfeAgent:
+class DDPGProjectionAgent:
     def __init__(self, state_dim, action_dim, action_bound, args):
         self.state_dim = state_dim
         self.action_dim = action_dim
@@ -104,7 +117,6 @@ class FrankWolfeAgent:
         self.lr_critic = args.lr_critic
         self.batch_size = args.batch_size
         self.memory_capacity = args.memory_capacity
-        self.eval_freq = args.eval_interval
 
         self.actor = Actor(state_dim, action_dim, action_bound).to(device)
         self.actor_target = Actor(state_dim, action_dim, action_bound).to(device)
@@ -148,7 +160,7 @@ class FrankWolfeAgent:
         next_state_batch = torch.FloatTensor(next_state_batch).to(device)
         done_batch = torch.FloatTensor(np.float32(done_batch)).unsqueeze(1).to(device)
 
-        # Critic update
+        # Update Critic
         with torch.no_grad():
             next_action_batch = self.actor_target(next_state_batch)
             next_q_values = self.critic_target(next_state_batch, next_action_batch)
@@ -161,48 +173,9 @@ class FrankWolfeAgent:
         critic_loss.backward()
         self.critic_optimizer.step()
 
-    def fw_update(self):
-        if len(self.memory) < self.batch_size:
-            return
-
-        # Sample a batch
-        state_batch, _, _, _, _ = self.memory.sample(self.batch_size)
-        state_batch = torch.FloatTensor(state_batch).to(device)
-
-        # Compute actions from the actor network
-        actions = self.actor(state_batch)
-        actions.requires_grad_(True)  # Ensure actions require grad
-
-        # Compute q_values
-        q_values = self.critic(state_batch, actions)
-
-        # Compute gradients of q_values w.r.t actions
-        action_grads = torch.autograd.grad(q_values.mean(), actions, create_graph=True)[0]
-
-        # Detach actions and gradients to move to NumPy
-        actions_np = actions.detach().cpu().numpy()
-        grads_np = action_grads.detach().cpu().numpy()
-
-        # Initialize action_table for storing updated actions
-        action_table = []
-
-        for i in range(self.batch_size):
-            grad = grads_np[i]
-            state = state_batch[i].cpu().numpy()
-            action = actions_np[i]
-
-            # Solve the linear subproblem using Gurobi
-            s = self.solve_linear_subproblem(grad, state)
-
-            # Update action: a_new = a_old + lr * (s - a_old)
-            lr = 0.01
-            a_new = action + lr * (s - action)
-            action_table.append(a_new)
-
-        action_table = torch.FloatTensor(action_table).to(device)
-
-        # Compute the MSE loss between actions and action_table
-        actor_loss = nn.MSELoss()(actions, action_table)
+        # Update Actor
+        # For DDPG, we maximize the expected Q value
+        actor_loss = -self.critic(state_batch, self.actor(state_batch)).mean()
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
@@ -212,53 +185,8 @@ class FrankWolfeAgent:
         self.soft_update(self.actor_target, self.actor)
         self.soft_update(self.critic_target, self.critic)
 
-
-
-    def constraint_satisfied(self, action, state):
-        # Implement your constraint checking logic here
-        # For example, check if |sum(action * state[11:])| <= 20
-        w = state[11:11+self.action_dim]
-        constraint_value = np.abs(np.sum(action * w))
-        return constraint_value <= 20 + 1e-6  # Small epsilon for numerical stability
-
-    def solve_linear_subproblem(self, grad, state):
-        try:
-            with gp.Env(empty=True) as env:
-                env.setParam('OutputFlag', 0)
-                env.start()
-                with gp.Model(env=env) as m:
-
-                    # 定义动作变量
-                    a_vars = m.addVars(self.action_dim, lb=-self.action_bound, ub=self.action_bound, name="a")
-
-                    # 目标：最大化 grad^T * a
-                    obj = gp.quicksum(a_vars[i] * grad[i] for i in range(self.action_dim))
-                    m.setObjective(obj, GRB.MAXIMIZE)
-
-                    # 添加约束
-                    w = state[11:11 + self.action_dim]
-                    constraint_expr = gp.quicksum(a_vars[i] * w[i] for i in range(self.action_dim))
-
-                    # 引入辅助变量 t，表示 constraint_expr 的绝对值
-                    t = m.addVar(lb=0.0, name="t")
-
-                    # 添加线性约束来表示 t = |constraint_expr|
-                    m.addConstr(constraint_expr <= t, name="abs_constraint_upper")
-                    m.addConstr(-constraint_expr <= t, name="abs_constraint_lower")
-
-                    # 添加上界约束 t ≤ 20
-                    m.addConstr(t <= 20, name="t_upper_bound")
-
-                    m.optimize()
-                    s = np.array([a_vars[i].X for i in range(self.action_dim)])
-            return s
-        except gp.GurobiError as e:
-            print("Gurobi Error:", e)
-            return np.zeros(self.action_dim)  # 如果优化失败，返回零向量
-
-
-
     def projection(self, action, state):
+        # Project the action onto the feasible set defined by the constraints
         try:
             with gp.Env(empty=True) as env:
                 env.setParam('OutputFlag', 0)
@@ -270,26 +198,17 @@ class FrankWolfeAgent:
                     m.setObjective(obj, GRB.MINIMIZE)
 
                     # Add constraints
-                    w = state[11:11 + self.action_dim]
+                    # For example, assume we have a constraint on state[11:11+action_dim] and action
+                    w = state[11:11+self.action_dim]
                     constraint_expr = gp.quicksum(a_vars[i] * w[i] for i in range(self.action_dim))
-
-                    # Introduce an auxiliary variable t to represent the absolute value
-                    t = m.addVar(lb=0.0, name="t")
-
-                    # Add linear constraints to model t = |constraint_expr|
-                    m.addConstr(constraint_expr <= t, name="abs_constraint_upper")
-                    m.addConstr(-constraint_expr <= t, name="abs_constraint_lower")
-
-                    # Add the upper bound constraint t ≤ 20
-                    m.addConstr(t <= 20, name="t_upper_bound")
+                    m.addConstr(gp.abs_(constraint_expr) <= 20)
 
                     m.optimize()
                     projected_action = np.array([a_vars[i].X for i in range(self.action_dim)])
             return projected_action
         except gp.GurobiError as e:
             print("Gurobi Error:", e)
-            return action  # 如果优化失败，返回原始动作
-
+            return action  # Return original action if optimization fails
 
     def hard_update(self, target_net, source_net):
         for target_param, param in zip(target_net.parameters(), source_net.parameters()):
@@ -329,8 +248,7 @@ def evaluate_policy(env, agent, episodes=10):
         episode_reward = 0
         while not done:
             action = agent.select_action(state, evaluate=True)
-            if not agent.constraint_satisfied(action, state):
-                action = agent.projection(action, state)  # Apply projection
+            action = agent.projection(action, state)  # Apply projection
             try:
                 next_state, reward, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
@@ -347,7 +265,7 @@ def evaluate_policy(env, agent, episodes=10):
 # ============================
 
 def main():
-    parser = argparse.ArgumentParser(description='Constrained Policy Optimization using Frank-Wolfe Algorithm')
+    parser = argparse.ArgumentParser(description='Constrained DDPG with Projection for OpenAI Gym Environments')
 
     # Environment and training parameters
     parser.add_argument('--env_name', type=str, default='HumanoidStandup-v2', help='Gym environment name')
@@ -366,7 +284,7 @@ def main():
     parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
     parser.add_argument('--tau', type=float, default=0.001, help='Soft update parameter')
     parser.add_argument('--memory_capacity', type=int, default=1000000, help='Replay buffer capacity')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size for training')  # Note the batch size
+    parser.add_argument('--batch_size', type=int, default=64, help='Batch size for training')
     parser.add_argument('--exploration_noise', type=float, default=0.1, help='Exploration noise')
 
     args = parser.parse_args()
@@ -384,7 +302,7 @@ def main():
 
     # Create environment
     env = gym.make(args.env_name)
-    env.reset(seed=args.seed)
+    env.seed(args.seed)
     state = env.reset(seed=args.seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -395,18 +313,18 @@ def main():
     action_bound = float(env.action_space.high[0])
 
     # Create models directory based on environment name
-    model_dir = os.path.join('models', args.env_name + "_frank_wolfe")
+    model_dir = os.path.join('models', args.env_name + "_ddpg_projection")
     os.makedirs(model_dir, exist_ok=True)
 
     # Initialize Agent
-    agent = FrankWolfeAgent(state_dim, action_dim, action_bound, args)
+    agent = DDPGProjectionAgent(state_dim, action_dim, action_bound, args)
 
     # Optionally load a pre-trained model
     start_episode = 0
     if args.load:
-        checkpoint_path = os.path.join(model_dir, 'frank_wolfe_final_checkpoint.pth')
+        checkpoint_path = os.path.join(model_dir, 'ddpg_projection_final_checkpoint.pth')
         if os.path.exists(checkpoint_path):
-            agent = FrankWolfeAgent.load(checkpoint_path, state_dim, action_dim, action_bound, args)
+            agent = DDPGProjectionAgent.load(checkpoint_path, state_dim, action_dim, action_bound, args)
             print(f"Loaded model from {checkpoint_path}")
         else:
             print("Checkpoint not found. Starting from scratch.")
@@ -430,11 +348,10 @@ def main():
                 action = env.action_space.sample()
             else:
                 action = agent.select_action(state)
-                action = action + np.random.normal(0, 0.1, size=agent.action_dim).clip(-action_bound, action_bound)
+                action = (action + np.random.normal(0, 0.1, size=agent.action_dim)).clip(-action_bound, action_bound)
 
-            # Apply projection if constraints are not satisfied
-            if not agent.constraint_satisfied(action, state):
-                action = agent.projection(action, state)
+            # Apply projection to satisfy constraints
+            action = agent.projection(action, state)
 
             # Step the environment
             try:
@@ -447,13 +364,13 @@ def main():
                 next_state = np.array(next_state)
 
             # Store transition in replay buffer
-            agent.memory.push(state, action, reward, next_state, done)
+            done_bool = False if step == args.max_steps else done
+            agent.memory.push(state, action, reward, next_state, done_bool)
             agent.pointer += 1
 
             # Update agent parameters
             if agent.pointer >= 10000:
                 agent.update_parameters()
-                agent.fw_update()
 
             state = next_state
             episode_reward += reward
@@ -463,6 +380,10 @@ def main():
 
         # Append training reward
         train_rewards.append(episode_reward)
+
+        # Exponential moving average of rewards (optional)
+        # ewma_reward = 0.05 * episode_reward + (1 - 0.05) * ewma_reward
+        # ewma_rewards.append(ewma_reward)
 
         print(f"Episode: {episode + 1}, Reward: {episode_reward}")
 
@@ -474,7 +395,7 @@ def main():
 
         # Save the model and rewards at regular intervals
         if (episode + 1) % args.save_interval == 0:
-            checkpoint_path = os.path.join(model_dir, f'frank_wolfe_checkpoint_ep{episode + 1}.pth')
+            checkpoint_path = os.path.join(model_dir, f'ddpg_projection_checkpoint_ep{episode + 1}.pth')
             agent.save(checkpoint_path)
             print(f"Model saved at episode {episode + 1}")
 
@@ -491,7 +412,7 @@ def main():
             break
 
     # After the training loop ends
-    final_checkpoint_path = os.path.join(model_dir, 'frank_wolfe_final_checkpoint.pth')
+    final_checkpoint_path = os.path.join(model_dir, 'ddpg_projection_final_checkpoint.pth')
     agent.save(final_checkpoint_path)
     print("Final model saved.")
 
