@@ -201,7 +201,19 @@ class DDPGProjectionAgent:
                     # For example, assume we have a constraint on state[11:11+action_dim] and action
                     w = state[11:11+self.action_dim]
                     constraint_expr = gp.quicksum(a_vars[i] * w[i] for i in range(self.action_dim))
-                    m.addConstr(gp.abs_(constraint_expr) <= 20)
+
+                    # Create auxiliary variables
+                    x = m.addVar(name="x")  # Variable to represent constraint_expr
+                    z = m.addVar(name="z")  # Variable for absolute value
+
+                    # Add constraint x == constraint_expr
+                    m.addConstr(x == constraint_expr, name="constraint_expr")
+
+                    # Add absolute value constraint z = abs(x)
+                    m.addGenConstrAbs(z, x, name="abs_constr")
+
+                    # Add the inequality constraint
+                    m.addConstr(z <= 20, name="ineq_constr")
 
                     m.optimize()
                     projected_action = np.array([a_vars[i].X for i in range(self.action_dim)])
@@ -209,6 +221,8 @@ class DDPGProjectionAgent:
         except gp.GurobiError as e:
             print("Gurobi Error:", e)
             return action  # Return original action if optimization fails
+
+
 
     def hard_update(self, target_net, source_net):
         for target_param, param in zip(target_net.parameters(), source_net.parameters()):
@@ -302,7 +316,7 @@ def main():
 
     # Create environment
     env = gym.make(args.env_name)
-    env.seed(args.seed)
+    env.reset(seed=args.seed)
     state = env.reset(seed=args.seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25

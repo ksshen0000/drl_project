@@ -313,7 +313,7 @@ if __name__ == "__main__":
     action_bound = env.action_space.high[0]
     
     # Update the models directory to include environment name
-    model_dir = os.path.join('models', args.env_name)
+    model_dir = os.path.join('models', args.env_name+"_td3")
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
     
