@@ -74,11 +74,11 @@ if __name__ == "__main__":
     os.makedirs(model_dir, exist_ok=True)
 
     # Create environment
-    env = gym.make(args.env_name,render_mode='human')
+    env = gym.make(args.env_name)
     env.reset(seed=args.seed)
 
     # Create evaluation environment
-    eval_env = gym.make(args.env_name,render_mode='human')
+    eval_env = gym.make(args.env_name)
     eval_env.reset(seed=args.seed + 100)
 
     # Define the model

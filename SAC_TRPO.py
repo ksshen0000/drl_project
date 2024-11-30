@@ -389,7 +389,7 @@ if __name__ == "__main__":
     eval_rewards = []
     
     # Create environment
-    env = gym.make(args.env_name)
+    env = gym.make(args.env_name, render_mode='human')
     state = env.reset(seed=seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -429,7 +429,7 @@ if __name__ == "__main__":
         
         for step in range(MAX_STEPS):
             if args.render:
-                # env.render()
+                env.render()
                 pass
             
             # Select action with exploration noise
@@ -470,8 +470,8 @@ if __name__ == "__main__":
         
         # Save the model and rewards at regular intervals
         if (episode + 1) % SAVE_INTERVAL == 0:
-            checkpoint_path = os.path.join(model_dir, f'sac_checkpoint_ep{episode + 1}.pth')
-            buffer_path = os.path.join(model_dir, f'replay_buffer_ep{episode + 1}.pkl')  # Changed to .pkl for pickle
+            checkpoint_path = os.path.join(model_dir, f'sac_checkpoint.pth')
+            buffer_path = os.path.join(model_dir, f'replay_buffer.pkl')  # Changed to .pkl for pickle
             agent.save(checkpoint_path, buffer_path, episode + 1)
             print(f"Model saved at episode {episode + 1}")
             
