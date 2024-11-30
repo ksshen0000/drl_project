@@ -389,7 +389,10 @@ if __name__ == "__main__":
     eval_rewards = []
     
     # Create environment
-    env = gym.make(args.env_name, render_mode='human')
+    if args.render:
+        env = gym.make(args.env_name, render_mode='human')
+    else:
+        env = gym.make(args.env_name)
     state = env.reset(seed=seed)
     if isinstance(state, tuple):
         state = state[0]  # For Gym versions >=0.25
@@ -413,9 +416,13 @@ if __name__ == "__main__":
         checkpoint_path = os.path.join(model_dir, 'sac_final_checkpoint.pth')
         buffer_path = os.path.join(model_dir, 'replay_buffer_final.pkl')  # Changed to .pkl for pickle
         if os.path.exists(checkpoint_path) and os.path.exists(buffer_path):
+            train_rewards = np.load(os.path.join(model_dir, 'train_rewards_final.npy')).tolist()
+            eval_rewards = np.load(os.path.join(model_dir, 'eval_rewards_final.npy')).tolist()
             start_episode = agent.load(checkpoint_path, buffer_path)
             print(f"Loaded model from episode {start_episode}")
         else:
+            # train_rewards = np.load(os.path.join(model_dir, 'train_rewards_final.npy')).tolist()
+            # eval_rewards = np.load(os.path.join(model_dir, 'eval_rewards_final.npy')).tolist()
             print("Checkpoint or replay buffer not found. Starting from scratch.")
     
     # Training Loop
