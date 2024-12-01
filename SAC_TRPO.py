@@ -311,7 +311,7 @@ class SAC:
         for target_param, source_param in zip(target.parameters(), source.parameters()):
             target_param.data.copy_(TAU * source_param.data + (1.0 - TAU) * target_param.data)
     
-    def save(self, checkpoint_path, buffer_path, episode):
+    def save(self, checkpoint_path, episode):
         """Save model parameters, optimizers, and replay buffer."""
         torch.save({
             'actor_state_dict': self.actor.state_dict(),
@@ -326,9 +326,9 @@ class SAC:
             'episode': episode
         }, checkpoint_path)
         # Save replay buffer using pickle
-        self.memory.save(buffer_path)
+        # self.memory.save(buffer_path)
     
-    def load(self, checkpoint_path, buffer_path):
+    def load(self, checkpoint_path):
         """Load model parameters, optimizers, and replay buffer."""
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.actor.load_state_dict(checkpoint['actor_state_dict'])
@@ -341,7 +341,7 @@ class SAC:
         self.log_alpha = checkpoint['log_alpha']
         self.alpha_optimizer.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
         # Load replay buffer using pickle
-        self.memory.load(buffer_path)
+        # self.memory.load(buffer_path)
         return checkpoint['episode']  # Return the episode number
 
 
@@ -414,11 +414,11 @@ if __name__ == "__main__":
     start_episode = 0
     if args.load:
         checkpoint_path = os.path.join(model_dir, 'sac_final_checkpoint.pth')
-        buffer_path = os.path.join(model_dir, 'replay_buffer_final.pkl')  # Changed to .pkl for pickle
-        if os.path.exists(checkpoint_path) and os.path.exists(buffer_path):
+        # buffer_path = os.path.join(model_dir, 'replay_buffer_final.pkl')  # Changed to .pkl for pickle
+        if os.path.exists(checkpoint_path):
             train_rewards = np.load(os.path.join(model_dir, 'train_rewards_final.npy')).tolist()
             eval_rewards = np.load(os.path.join(model_dir, 'eval_rewards_final.npy')).tolist()
-            start_episode = agent.load(checkpoint_path, buffer_path)
+            start_episode = agent.load(checkpoint_path)
             print(f"Loaded model from episode {start_episode}")
         else:
             # train_rewards = np.load(os.path.join(model_dir, 'train_rewards_final.npy')).tolist()
@@ -478,8 +478,8 @@ if __name__ == "__main__":
         # Save the model and rewards at regular intervals
         if (episode + 1) % SAVE_INTERVAL == 0:
             checkpoint_path = os.path.join(model_dir, f'sac_checkpoint.pth')
-            buffer_path = os.path.join(model_dir, f'replay_buffer.pkl')  # Changed to .pkl for pickle
-            agent.save(checkpoint_path, buffer_path, episode + 1)
+            # buffer_path = os.path.join(model_dir, f'replay_buffer.pkl')  # Changed to .pkl for pickle
+            agent.save(checkpoint_path, episode + 1)
             print(f"Model saved at episode {episode + 1}")
             
             # Save training and evaluation rewards
@@ -491,8 +491,8 @@ if __name__ == "__main__":
     
     # After the training loop ends
     final_checkpoint_path = os.path.join(model_dir, f'sac_final_checkpoint.pth')
-    final_buffer_path = os.path.join(model_dir, f'replay_buffer_final.pkl')
-    agent.save(final_checkpoint_path, final_buffer_path, MAX_EPISODES)
+    # final_buffer_path = os.path.join(model_dir, f'replay_buffer_final.pkl')
+    agent.save(final_checkpoint_path, MAX_EPISODES)
     print("Final model and replay buffer saved.")
     
     # Save final training and evaluation rewards
